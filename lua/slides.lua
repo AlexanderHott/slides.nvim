@@ -55,23 +55,17 @@ local function parse_slides(lines)
 
 	-- parse code blocks
 	for _, slide in ipairs(slides.slides) do
-		local codeblock = ""
-		local inside_block = false
+		local codeblock = nil
 		for _, line in ipairs(slide.body) do
 			if vim.startswith(line, "```") then
-				if not inside_block then
-					inside_block = true
-					codeblock = codeblock .. line .. "\n"
+				if codeblock then
+					table.insert(slide.codeblocks, vim.trim(codeblock .. line .. "\n"))
+					codeblock = nil
 				else
-					inside_block = false
-					codeblock = codeblock .. line .. "\n"
-					table.insert(slide.codeblocks, vim.trim(codeblock))
-					codeblock = ""
+					codeblock = line .. "\n"
 				end
-			else
-				if inside_block then
-					codeblock = codeblock .. line .. "\n"
-				end
+			elseif codeblock then
+				codeblock = codeblock .. line .. "\n"
 			end
 		end
 	end
