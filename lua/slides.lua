@@ -3,6 +3,7 @@ local M = {}
 ---@class slides.Slide
 ---@field title string
 ---@field body string[]
+---@field codeblocks string[]
 
 ---@class slides.Slides
 ---@field slides slides.Slide[]: the slides
@@ -35,14 +36,15 @@ M.setup = function() end
 ---@return slides.Slides
 local function parse_slides(lines)
 	local slides = { slides = {} }
-	local current_slide = { title = "", body = {} }
+	local current_slide = { title = "", body = {}, codeblocks = {} }
 
+	-- parse title and body
 	for _, line in ipairs(lines) do
 		if line:find("^#") then
 			if #current_slide.title > 0 then
 				table.insert(slides.slides, current_slide)
 			end
-			current_slide = { title = line, body = {} }
+			current_slide = { title = line, body = {}, codeblocks = {} }
 		else
 			table.insert(current_slide.body, line)
 		end
@@ -50,6 +52,30 @@ local function parse_slides(lines)
 	if #current_slide.title > 0 then
 		table.insert(slides.slides, current_slide)
 	end
+
+	-- parse code blocks
+	for _, slide in ipairs(slides.slides) do
+		local codeblock = ""
+		local inside_block = false
+		for _, line in ipairs(slide.body) do
+			if vim.startswith(line, "```") then
+				if not inside_block then
+					inside_block = true
+					codeblock = codeblock .. line .. "\n"
+				else
+					inside_block = false
+					codeblock = codeblock .. line .. "\n"
+					table.insert(slide.codeblocks, vim.trim(codeblock))
+					codeblock = ""
+				end
+			else
+				if inside_block then
+					codeblock = codeblock .. line .. "\n"
+				end
+			end
+		end
+	end
+
 	return slides
 end
 M._parse_slides = parse_slides
