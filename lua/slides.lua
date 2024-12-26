@@ -68,7 +68,8 @@ M.create_system_executor = function(cmd)
 	return function(codeblock)
 		local tempfile = vim.fn.tempname()
 		vim.fn.writefile(vim.split(codeblock.code, "\n"), tempfile)
-		local args = table.insert(cmd, tempfile)
+		local args = vim.deepcopy(cmd)
+		table.insert(args, tempfile)
 		local result = vim.system(args, { text = true }):wait()
 		vim.loop.fs_unlink(tempfile)
 		return vim.split(result.stdout, "\n")
@@ -110,8 +111,7 @@ local options = {
 }
 M.setup = function(opts)
 	opts = opts or {}
-	opts.executors = opts.executors or {}
-	vim.tbl_deep_extend("force", options, opts)
+	options = vim.tbl_deep_extend("force", options, opts)
 end
 
 ---@param lines string[]
