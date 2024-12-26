@@ -31,13 +31,6 @@ describe("slides.parse_slides", function()
 		local slide = actual.slides[1]
 		eq("# title", slide.title)
 		eq({ "body", "```lua", "print('hi')", "```" }, slide.body)
-		eq(
-			vim.trim([[
-```lua
-print('hi')
-```
-]]),
-			slide.codeblocks[1]
-		)
+		eq({ language = "lua", code = "print('hi')" }, slide.codeblocks[1])
 	end)
 end)

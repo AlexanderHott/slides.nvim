@@ -1,9 +1,13 @@
 local M = {}
----
+
+---@class slides.Codeblock
+---@field language string
+---@field code string
+
 ---@class slides.Slide
 ---@field title string
 ---@field body string[]
----@field codeblocks string[]
+---@field codeblocks slides.Codeblock[]
 
 ---@class slides.Slides
 ---@field slides slides.Slide[]: the slides
@@ -55,17 +59,19 @@ local function parse_slides(lines)
 
 	-- parse code blocks
 	for _, slide in ipairs(slides.slides) do
+		---@type slides.Codeblock?
 		local codeblock = nil
 		for _, line in ipairs(slide.body) do
 			if vim.startswith(line, "```") then
 				if codeblock then
-					table.insert(slide.codeblocks, vim.trim(codeblock .. line .. "\n"))
+					codeblock.code = vim.trim(codeblock.code)
+					table.insert(slide.codeblocks, codeblock)
 					codeblock = nil
 				else
-					codeblock = line .. "\n"
+					codeblock = { language = string.sub(line, 4), code = "" }
 				end
 			elseif codeblock then
-				codeblock = codeblock .. line .. "\n"
+				codeblock.code = codeblock.code .. line .. "\n"
 			end
 		end
 	end
@@ -197,6 +203,60 @@ M.start_presentation = function(opts)
 	slides_keymap("n", "q", function()
 		state.current_slide = math.max(state.current_slide - 1, 1)
 		vim.api.nvim_win_close(state.floats.body.win, true)
+	end)
+
+	slides_keymap("n", "X", function()
+		local slide = state.slides.slides[state.current_slide]
+		local codeblock = slide.codeblocks[1]
+		if not codeblock then
+			print("No codeblock found")
+			return
+		end
+
+		local chunk = loadstring(codeblock.code)
+		if not chunk then
+			print("Empty codeblock")
+			return
+		end
+
+		local print_original = print
+		local output = { "", "# Code", "", "```" .. codeblock.language }
+		vim.list_extend(output, vim.split(codeblock.code, "\n"))
+		table.insert(output, "```")
+
+		-- capture lua output
+		print = function(...)
+			local args = { ... }
+			local message = table.concat(vim.tbl_map(tostring, args), "\t")
+			table.insert(output, message)
+		end
+
+		pcall(function()
+			table.insert(output, "")
+			table.insert(output, "# Output ")
+			table.insert(output, "")
+			chunk()
+		end)
+		print = print_original
+
+		local buf = vim.api.nvim_create_buf(false, true)
+		vim.bo[buf].filetype = "markdown"
+
+		local width = vim.o.columns
+		local height = vim.o.lines
+		local win_width = math.floor(width * 0.8)
+		local win_height = math.floor(height * 0.8)
+		vim.api.nvim_open_win(buf, true, {
+			relative = "editor",
+			width = win_width,
+			height = win_height,
+			row = math.floor((height - win_height) / 2),
+			col = math.floor((width - win_width) / 2),
+			noautocmd = true,
+			border = "rounded",
+		})
+
+		vim.api.nvim_buf_set_lines(buf, 0, -1, false, output)
 	end)
 
 	local restore = {
