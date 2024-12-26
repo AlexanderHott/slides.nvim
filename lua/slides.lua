@@ -34,7 +34,85 @@ local state = {
 	title = "",
 }
 
-M.setup = function() end
+---@param codeblock slides.Codeblock
+---@return string[]
+local function execute_lua_code(codeblock)
+	local print_original = print
+
+	local output = {}
+	--
+	-- capture lua output
+	print = function(...)
+		local args = { ... }
+		local message = table.concat(vim.tbl_map(tostring, args), "\t")
+		table.insert(output, message)
+	end
+
+	local chunk = loadstring(codeblock.code)
+	if not chunk then
+		return { "<<< No Code >>>" }
+	end
+
+	pcall(function()
+		chunk()
+	end)
+	print = print_original
+
+	return output
+end
+
+---@param cmd string[]
+M.create_system_executor = function(cmd)
+	---@param codeblock slides.Codeblock
+	---@return string[]
+	return function(codeblock)
+		local tempfile = vim.fn.tempname()
+		vim.fn.writefile(vim.split(codeblock.code, "\n"), tempfile)
+		local args = table.insert(cmd, tempfile)
+		local result = vim.system(args, { text = true }):wait()
+		vim.loop.fs_unlink(tempfile)
+		return vim.split(result.stdout, "\n")
+	end
+end
+
+---@param build_cmd string[]
+---@param build_flags string[]
+M.create_compile_system_executor = function(build_cmd, build_flags)
+	---@param codeblock slides.Codeblock
+	---@return string[]
+	return function(codeblock)
+		local temp_src = vim.fn.tempname()
+		local temp_exec = vim.fn.tempname()
+		vim.fn.writefile(vim.split(codeblock.code, "\n"), temp_src)
+
+		local build = vim.deepcopy(build_cmd)
+		table.insert(build, temp_src)
+		vim.list_extend(build, build_flags)
+		table.insert(build, temp_exec)
+		vim.system(build, { text = true }):wait()
+
+		local result = vim.system({ temp_exec }, { text = true }):wait()
+
+		vim.loop.fs_unlink(temp_src)
+		vim.loop.fs_unlink(temp_exec)
+
+		return vim.split(result.stdout, "\n")
+	end
+end
+
+local options = {
+	executors = {
+		lua = execute_lua_code,
+		js = M.create_system_executor({ "node" }),
+		py = M.create_system_executor({ "python" }),
+		rs = M.create_compile_system_executor({ "rustc" }, { "-o" }),
+	},
+}
+M.setup = function(opts)
+	opts = opts or {}
+	opts.executors = opts.executors or {}
+	vim.tbl_deep_extend("force", options, opts)
+end
 
 ---@param lines string[]
 ---@return slides.Slides
@@ -213,31 +291,19 @@ M.start_presentation = function(opts)
 			return
 		end
 
-		local chunk = loadstring(codeblock.code)
-		if not chunk then
-			print("Empty codeblock")
-			return
+		local executor = options.executors[codeblock.language]
+		if not executor then
+			print("No valid executor for", codeblock.language)
 		end
 
-		local print_original = print
-		local output = { "", "# Code", "", "```" .. codeblock.language }
+		local output = { "# Code", "", "```" .. codeblock.language }
 		vim.list_extend(output, vim.split(codeblock.code, "\n"))
 		table.insert(output, "```")
 
-		-- capture lua output
-		print = function(...)
-			local args = { ... }
-			local message = table.concat(vim.tbl_map(tostring, args), "\t")
-			table.insert(output, message)
-		end
-
-		pcall(function()
-			table.insert(output, "")
-			table.insert(output, "# Output ")
-			table.insert(output, "")
-			chunk()
-		end)
-		print = print_original
+		table.insert(output, "")
+		table.insert(output, "# Output")
+		table.insert(output, "")
+		vim.list_extend(output, executor(codeblock))
 
 		local buf = vim.api.nvim_create_buf(false, true)
 		vim.bo[buf].filetype = "markdown"
@@ -246,7 +312,7 @@ M.start_presentation = function(opts)
 		local height = vim.o.lines
 		local win_width = math.floor(width * 0.8)
 		local win_height = math.floor(height * 0.8)
-		vim.api.nvim_open_win(buf, true, {
+		local win = vim.api.nvim_open_win(buf, true, {
 			relative = "editor",
 			width = win_width,
 			height = win_height,
@@ -255,6 +321,10 @@ M.start_presentation = function(opts)
 			noautocmd = true,
 			border = "rounded",
 		})
+
+		vim.keymap.set("n", "q", function()
+			vim.api.nvim_win_close(win, true)
+		end, { buffer = buf })
 
 		vim.api.nvim_buf_set_lines(buf, 0, -1, false, output)
 	end)
