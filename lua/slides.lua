@@ -52,6 +52,7 @@ local function parse_slides(lines)
 	end
 	return slides
 end
+M._parse_slides = parse_slides
 
 ---@param config vim.api.keyset.win_config
 ---@param enter boolean?
@@ -219,7 +220,5 @@ M.start_presentation = function(opts)
 
 	set_slide_content(state.current_slide)
 end
-
-M.start_presentation({ bufnr = 434 })
 
 return M
