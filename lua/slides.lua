@@ -10,7 +10,7 @@ local M = {}
 ---@field codeblocks slides.Codeblock[]
 
 ---@class slides.Slides
----@field slides slides.Slide[]: the slides
+---@field slides slides.Slide[]
 
 ---@class Float
 ---@field buf integer
