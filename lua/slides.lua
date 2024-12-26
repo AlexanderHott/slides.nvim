@@ -38,16 +38,15 @@ local function create_floating_window(config)
 	return { buf = buf, win = win }
 end
 
-M.start_presentation = function(opts)
-	opts = opts or {}
-	opts.bufnr = opts.bufnr or 0
-	local lines = vim.api.nvim_buf_get_lines(opts.bufnr, 0, -1, false)
-	local slides = parse_slides(lines)
-
+---@return {
+---		background: vim.api.keyset.win_config,
+---		header: vim.api.keyset.win_config,
+---		body: vim.api.keyset.win_config,
+---}
+local function create_window_configurations()
 	local width = vim.o.columns
 	local height = vim.o.lines
-	---@type vim.api.keyset.win_config[]
-	local windows = {
+	return {
 		background = {
 			relative = "editor",
 			width = width,
@@ -78,6 +77,15 @@ M.start_presentation = function(opts)
 			zindex = 2,
 		},
 	}
+end
+
+M.start_presentation = function(opts)
+	opts = opts or {}
+	opts.bufnr = opts.bufnr or 0
+	local lines = vim.api.nvim_buf_get_lines(opts.bufnr, 0, -1, false)
+	local slides = parse_slides(lines)
+
+	local windows = create_window_configurations()
 	local background_float = create_floating_window(windows.background)
 	local header_float = create_floating_window(windows.header)
 	local body_float = create_floating_window(windows.body)
@@ -87,6 +95,7 @@ M.start_presentation = function(opts)
 
 	local function set_slide_content(idx)
 		local slide = slides.slides[idx]
+		local width = vim.o.columns
 		local padding = string.rep(" ", (width - #slide.title) / 2)
 		vim.api.nvim_buf_set_lines(header_float.buf, 0, -1, false, { padding .. slide.title })
 		vim.api.nvim_buf_set_lines(body_float.buf, 0, -1, false, slide.body)
@@ -129,6 +138,21 @@ M.start_presentation = function(opts)
 
 			pcall(vim.api.nvim_win_close, header_float.win, true)
 			pcall(vim.api.nvim_win_close, background_float.win, true)
+		end,
+	})
+
+	vim.api.nvim_create_autocmd("VimResized", {
+		group = vim.api.nvim_create_augroup("slides-resized", {}),
+		callback = function()
+			if not vim.api.nvim_win_is_valid(body_float.win) or body_float.win == nil then
+				return
+			end
+
+			local new_config = create_window_configurations()
+			vim.api.nvim_win_set_config(header_float.win, new_config.header)
+			vim.api.nvim_win_set_config(body_float.win, new_config.body)
+			vim.api.nvim_win_set_config(background_float.win, new_config.background)
+			set_slide_content(current_slide)
 		end,
 	})
 
